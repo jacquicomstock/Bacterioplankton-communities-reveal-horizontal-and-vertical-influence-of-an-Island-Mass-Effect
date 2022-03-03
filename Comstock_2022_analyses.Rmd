@@ -1,0 +1,382 @@
+---
+title: "Comstock et al 2022 Analyses"
+author: "Jacqueline Comstock"
+date: "3/3/2022"
+output: html_document
+---
+
+```{r}
+rm(list=ls())
+library(vegan)
+library(ggplot2)
+library(tidyverse)
+library(pairwiseAdonis)
+```
+
+
+PERMANOVA, pairwise PERMANOVA, Betadisper, NMDS Ordination
+
+```{r}
+#import
+mydata <- read.csv("KM_envasv_all_rar3000_nmds.csv", header=TRUE,sep=",",row.names=1)
+
+#filter surface data
+surf1 <- filter(mydata, NOM.DEPTH..m. <= 25)
+surf <- filter(surf1, NISKIN.NO != "18")
+surf.asv = surf[,94:ncol(surf)]
+surf.asin <- asin(sqrt(surf.asv/100))
+surf.bc<-vegdist(surf.asin, method="bray")
+
+#filter oceanic data
+ocean <- filter(mydata, Broad_Location == "Pelagic")
+ocean.asv = ocean[,94:ncol(ocean)]
+ocean.asin <- asin(sqrt(ocean.asv/100))
+ocean.bc<-vegdist(ocean.asin, method="bray")
+
+# adonis of offshore vs nearshore vs nearshore enhanced
+adonis1 <- adonis(surf.bc~surf$Nearshore_Enhanced)
+#adonis of all oceanis stations
+adonis2 <- adonis(ocean.bc~ocean$NISKIN.NO)
+
+#pairwise adonis of oceanic non-enhanced vs nearshore enhanced vs reef
+pair.adonis1 <- pairwise.adonis(surf.bc, surf$Nearshore_Enhanced_Reef)
+pair.adonis2 <- pairwise.adonis(surf.bc, surf$Nearshore_Enhanced)
+pair.adonis3 <- pairwise.adonis(surf.bc, surf$Location)
+
+#filter DCM data
+DCM1 <- filter(mydata, NOM.DEPTH..m. <= 135)
+DCM2 <- filter(DCM1, NOM.DEPTH..m. >= 85)
+DCM <- filter (DCM2, STATION !=208)
+DCM.asv <- DCM[,94:ncol(DCM)]
+DCM.asin <- asin(sqrt(DCM.asv/100))
+DCM.bc <- vegdist(DCM.asin, method="bray")
+
+#adonis of DCM and density
+adonis4 <- adonis(DCM.bc ~ DCM$density..kg.m3.)
+adonis5 <- adonis(DCM.bc ~ DCM$DCM_group)
+
+#adonis of the 2 DCM groups and density, oxygen, DOC
+pair.adonis4 <- pairwise.adonis(DCM.bc, DCM$DCM_group)
+
+#subset 75m, DCM, 150m
+meso1 <- filter(ocean, NOM.DEPTH..m. <= 160)
+meso2 <- filter(meso1, NOM.DEPTH..m. >= 70)
+meso <- filter (meso2, STATION !=208)
+meso.asv <- meso[,94:ncol(meso)]
+meso.asin <- asin(sqrt(meso.asv/100))
+meso.bc <- vegdist(meso.asin, method="bray")
+
+#create new metadata
+DCMgroup2 <- as.data.frame(paste(meso$NISKIN.NO, meso$DCM_group, sep = ""))
+colnames(DCMgroup2) <- "DCMgroup2"
+rownames(DCMgroup2) <- rownames(meso)
+meso3 <- cbind(DCMgroup2, meso)
+
+#run pariwise adonis on 75m, DCM, 150m
+pair.adonis5 <- pairwise.adonis(meso.bc, meso3$DCMgroup2)
+adonis6 <- adonis(meso.bc ~ meso3$DCMgroup2)
+
+#filter all top 75m samples
+UE1 <- filter(mydata, NOM.DEPTH..m. <= 80)
+names <- as.data.frame(rownames(UE1))
+UE1.2 <- cbind(names, UE1)
+UE <- filter(UE1.2, UE1.2$`rownames(UE1)` != "S235-N14_S335")
+UE.asv <- UE[,95:ncol(UE)]
+UE.asin <- as.matrix(asin(sqrt(UE.asv/100)))
+UE.bc<-as.matrix(vegdist(UE.asin, method="bray"))
+#run NDMS
+nmds = metaMDS(UE.asin, distance = "bray")
+data.scores = as.data.frame(scores(nmds))
+
+#remove reef samples from top 75m
+UE2 <- filter (UE, UE$Nearshore_Enhanced_Reef != "Reef")
+UE2.asv <- UE2[,95:ncol(UE2)]
+UE2.asin <- as.matrix(asin(sqrt(UE2.asv/100)))
+UE2.bc<-as.matrix(vegdist(UE2.asin, method="bray"))
+#run adonis
+UE.adonis <- adonis(UE.bc ~ Nearshore_Enhanced_Reef, data = UE)
+UE2.adonis <- adonis(UE2.bc ~ Nearshore_Enhanced_Reef, data = UE2)
+
+#export NDMS coordinates
+write.csv(data.scores, "10_to_75m_nmds.csv")
+
+#filter top 10m samples
+surf <- filter(mydata, NOM.DEPTH..m. <= 11)
+surf.asv <- surf[,94:ncol(surf)]
+surf.asin <- as.matrix(asin(sqrt(surf.asv/100)))
+surf.bc<-as.matrix(vegdist(surf.asin, method="bray"))
+
+#remove reef samples from 10m
+surf2 <- filter (surf, surf$Nearshore_Enhanced_Reef != "Reef")
+surf2.asv <- surf2[,94:ncol(surf2)]
+surf2.asin <- as.matrix(asin(sqrt(surf2.asv/100)))
+surf2.bc<-as.matrix(vegdist(surf2.asin, method="bray"))
+
+#run permanova
+surf.adonis <- adonis(surf.bc ~ Nearshore_Enhanced_Reef, data = surf)
+surf2.adonis <- adonis(surf2.bc ~ Nearshore_Enhanced_Reef, data = surf2)
+
+#run pairwise adonis
+surf.pair <- pairwise.adonis(surf.asin, surf$Nearshore_Enhanced)
+UE.pair <- pairwise.adonis(UE.asin, UE$Nearshore_Enhanced)
+
+#run beta diversity measurement on all samples
+asv <- mydata[,94:ncol(mydata)]
+asv.asin <- asin(sqrt(asv/100))
+asv.bc <- vegdist(asv.asin, method="bray")
+beta.dcm <- betadisper(asv.bc, group=mydata$NISKIN.NO)
+
+#NMDS needed for DCM supplementary figure
+dcm.nmds <- metaMDS(meso.asin, distance = "bray")
+data.scores <- as.data.frame(scores(dcm.nmds))
+
+```
+
+
+T-TESTS
+```{r}
+#break up DCM groups
+DCM_UE <- filter (DCM, DCM$DCM_group == "UE-like")
+UE_asv <- DCM_UE[,94:ncol(DCM_UE)]
+
+DCM_meso <- filter (DCM, DCM$DCM_group == "Meso-like")
+meso_asv <- DCM_meso[,94:ncol(DCM_meso)]
+
+#identify structure of t.test code
+test <- t.test(UE_asv ,meso_asv)
+
+# make model to run t tests
+model <- function(x) {t.test(x,meso_asv)}
+model2 <- function(x) {t.test(x,UE_asv)}
+
+# run ttests
+lm1 <- apply(UE_asv,2,FUN=model)
+lm2 <- apply(meso_asv,2,FUN=model2)
+
+```
+
+
+evironmental vectors
+```{r}
+nmds = metaMDS(surf.asin, distance = "bray")
+nmds2 = metaMDS(asv, distance = "bray")
+data.scores = as.data.frame(scores(nmds))
+env = surf[,c(57,65,69,72)]
+env2 = surf[,c(94,100,103,111,112,135)]
+
+en = envfit(nmds, env, permutations = 999, na.rm = TRUE)
+
+en_coord_cont = as.data.frame(scores(en, "vectors")) * ordiArrowMul(en)
+
+ ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2, color=surf$Nearshore_Enhanced)) + 
+  geom_point(data = data.scores, size = 2, alpha = 0.5) + 
+  #scale_colour_manual(values = c( "springgreen4", "orange3")) + 
+   #xlim(-.8,0.4) +
+   #ylim(-.8,0.4) +
+  geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+               data = en_coord_cont, size =1, alpha = 0.5, colour = "black") +
+  geom_text(data = en_coord_cont, aes(x = NMDS1, y = NMDS2), colour = "black", 
+            fontface = "bold", label = row.names(en_coord_cont), size=2) + 
+  theme(axis.title = element_text(size = 10, face = "bold", colour = "black"), 
+        panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "black"), 
+         legend.key = element_blank(), 
+        legend.title = element_text(size = 10, face = "bold", colour = "black"), 
+        legend.text = element_text(size = 9, colour = "black")) 
+```
+
+
+FILTERING DATASETS FOR SUPPLEMENTARY TABLES
+```{r}
+######## TABLE 1 ###########
+#filter ASVs. Must have abundance greater than 4% in 3 samples, or 8% in one sample
+
+#subset ASV data from metadata
+asv = mydata[,94:ncol(mydata)]
+#relabund.df = dataframe containing ONLY relative abundance data, no metadata or other info. Samples in rows and OTUs in columns.
+relabund.df <- as.matrix(asv/100)
+#min.num = the minimum number of samples an OTU needs to be present in to not be culled.
+min.num <- 3
+#min.abund = the minimum relative abundance an OTU needs to have in (the min.num) samples to not be culled.
+min.abund <- .04
+#min.single.abund = the minimum relative abundance an OTU needs to have in a SINGLE sample to not be culled.
+min.single.abund <-.08
+
+  
+#create the function
+cull.asv <- function(relabund.df, min.num, min.abund, min.single.abund) {
+  #create a empty vector
+  sub=c()
+  #make a function that says for any input, generate a logical vector of TRUEs and FALSEs that will be used for subsetting, selecting OTUs that
+  cull=function(x) {
+  #have a relabund>"min.abund" in "min.num" samples
+  sub=ifelse(length(x[x>=min.abund])>=min.num 
+  #or have a relabund>"min.single.abund" in at least one sample           
+  | length(x[x>=min.single.abund])>0,TRUE,FALSE) 
+    return(sub)}
+  #apply cull function to relabund.df, save output as a vector.
+  cull.vec=apply(relabund.df,2,FUN=cull)
+  #Use cull.vec to subset the columns of relabund.df for OTUs that passed the cull threshold.
+  relabund.df.cull=relabund.df[,cull.vec]
+  relabund.df.cull<<-relabund.df.cull
+}
+
+#run the function on ASVs
+asv_cull <- as.matrix(cull.asv(relabund.df, min.num, min.abund, min.single.abund))
+
+#calculate averages
+asv.avg <- t(aggregate(x= asv_cull, by = list(mydata$NISKIN.NO), FUN = mean))
+#calculate st dev
+asv.stdev <- t(aggregate(x= asv_cull, by = list(mydata$NISKIN.NO), FUN = sd))
+
+#combine the two data frames
+asv.avg.stdev <- as.data.frame(cbind(asv.avg, asv.stdev))
+
+#export data frame for supplementary table 1
+write.csv(asv.avg.stdev, "SupplementaryTable1.csv")
+######################################################################################
+
+
+
+
+
+
+################### SUPPLEMENTARY TABLE 2 ########################
+# Reef ASVs with Reef/Oceanic averages and t test p values for Reef ASVs found in oceanic stations
+
+euphotic <- filter (mydata, mydata$depth..m. < 76)
+euph.asv <- euphotic[,94:ncol(euphotic)]
+
+#subset reef and oceanic UE, and cull singletons in less than 3 samples
+relabund.df1 <- as.matrix(euph.asv/100)
+min.num1 <- 3
+min.abund1 <- .00034
+min.single.abund1 <-1
+#run the function on reef ASVs
+euph.asv_cull <- as.data.frame((cull.asv(relabund.df1, min.num1, min.abund1, min.single.abund1))*100)
+
+#combine culled ASVs with metadata
+euph.meta <- cbind(as.data.frame(euphotic[,1:94]),euph.asv_cull)
+
+#break up groups
+reef.asv <- filter (euph.asv_cull, euph.meta$Broad_Location == "Reef")
+UE.asv <- filter (euph.asv_cull, euph.meta$Broad_Location == "Pelagic")
+
+#What we need to do here is combine the 2 dataframes and turn them into tidy format
+#first, add 1 metadata line
+reef.meta <- as.data.frame(rep("Reef",times=nrow(reef.asv)))
+colnames(reef.meta) <- "Location"
+#combine metadata line with asv df
+reef.meta.asv <- cbind(reef.meta,reef.asv)
+
+#do the same for the UE
+UE.meta <- as.data.frame(rep("UE",times=nrow(UE.asv)))
+colnames(UE.meta) <- "Location"
+UE.meta.asv <- cbind(UE.meta,UE.asv)
+
+#combine the UE and reef dfs by row
+UEreef <- rbind(UE.meta.asv,reef.meta.asv)
+
+#convert to 'tidy' long format
+UEreef.long <- melt(UEreef, id = "Location")
+colnames(UEreef.long) <- c("Location","ASV","Abundance")
+
+#run t test on all ASVs
+ttest <- UEreef.long %>%
+  split(.$ASV) %>%
+  map(~t.test(Abundance ~ Location, .x))
+
+#Extract pvals
+ttest.pvals <- t(as.data.frame(sapply(ttest, "[", 3)))
+colnames(ttest.pvals) <- "pvals"
+rownames(ttest.pvals) <- colnames(UEreef[2:ncol(UEreef)])
+ttest.pvals <- as.data.frame(ttest.pvals)
+
+#padjust
+ttest.pvals$padjust <- p.adjust(ttest.pvals$pvals,method="BH")
+
+#calculate averages for reef, oceanic
+reef.avg <- t(aggregate(x= reef.asv, by = list(reef.meta.asv$Location), FUN = mean))
+reef.avg <- as.data.frame(reef.avg[2:nrow(reef.avg),])
+colnames(reef.avg) <- "Reef_Mean_Abundance"
+
+UE.avg <- t(aggregate(x= UE.asv, by = list(UE.meta.asv$Location), FUN = mean))
+UE.avg <- as.data.frame(UE.avg[2:nrow(UE.avg),])
+colnames(UE.avg) <- "UE_Mean_Abundance"
+
+#calculate stdev for reef, oceanic
+reef.stdev <- t(aggregate(x= reef.asv, by = list(reef.meta.asv$Location), FUN = sd))
+reef.stdev <- as.data.frame(reef.stdev[2:nrow(reef.stdev),])
+colnames(reef.stdev) <- "Reef_StDev"
+
+UE.stdev <- t(aggregate(x= UE.asv, by = list(UE.meta.asv$Location), FUN = sd))
+UE.stdev <- as.data.frame(UE.stdev[2:nrow(UE.stdev),])
+colnames(UE.stdev) <- "UE_StDev"
+
+#combine means, stdev, and p values
+UEreef.mean.sd.pval <- cbind (reef.avg,reef.stdev,UE.avg,UE.stdev,ttest.pvals)
+
+# subset padjust values to p<0.05 and remove NAs
+ttest.padjustsub1 <-UEreef.mean.sd.pval[UEreef.mean.sd.pval$padjust<=.05,]
+ttest.padjustsub <- na.omit(ttest.padjustsub1) 
+
+#Export data frame for supplementary table 2
+write.csv(ttest.padjustsub, "SupplementaryTable2_ASVcull.csv")
+#####################################################################################
+
+
+
+
+
+
+
+################# SUPPLEMENTARY TABLE 3 ########################
+#Mean relative abundances for DCM ASVs enhanced in Mesopelagic-like and Upper Euphotic-like stations with t test p values
+
+#isolate DCM samples & remove most metadata except DCM group
+dcm <- filter (mydata, mydata$NISKIN.NO == "12")
+dcm.asv <- dcm[,c(4,94:ncol(dcm))]
+dcm.group <- as.data.frame(dcm.asv$DCM_group)
+colnames(dcm.group) <- "DCM_group"
+dcm.cull.id <- cbind(dcm.group, dcm.asv_cull)
+
+#convert to 'tidy' long format
+dcm.long <- melt(dcm.cull.id, id = "DCM_group")
+colnames(dcm.long) <- c("DCM_group","ASV","Abundance")
+
+#run t test on all ASVs
+dcm.ttest <- dcm.long %>%
+  split(.$ASV) %>%
+  map(~t.test(Abundance ~ DCM_group, .x))
+
+#Extract pvals
+dcm.ttest.pvals <- t(as.data.frame(sapply(dcm.ttest, "[", 3)))
+colnames(dcm.ttest.pvals) <- "pvals"
+rownames(dcm.ttest.pvals) <- colnames(dcm.cull.id[2:ncol(dcm.cull.id)])
+dcm.ttest.pvals <- as.data.frame(dcm.ttest.pvals)
+
+#padjust
+dcm.ttest.pvals$padjust <- p.adjust(dcm.ttest.pvals$pvals,method="BH")
+
+#write.csv(dcm.ttest.pvals,"C:/Users/jacqu/Desktop/DCM_allpvals.csv")
+#calculate averages for DCM groups
+dcm.asv.trim <- dcm.cull.id[,2:ncol(dcm.cull.id)]
+dcm.avg <- t(aggregate(x= dcm.asv.trim, by = list(dcm.cull.id$DCM_group), FUN = mean))
+dcm.avg <- as.data.frame(dcm.avg[2:nrow(dcm.avg),])
+colnames(dcm.avg) <- c("Meso-like", "UE-like")
+
+#calculate st dev for DCM groups
+dcm.sd <- t(aggregate(x= dcm.asv.trim, by = list(dcm.cull.id$DCM_group), FUN = sd))
+dcm.sd <- as.data.frame(dcm.sd[2:nrow(dcm.sd),])
+colnames(dcm.sd) <- c("Meso-like", "UE-like")
+
+#combine means, stdev, and p values
+dcm.mean.sd.pval <- cbind(dcm.avg,dcm.sd,dcm.ttest.pvals)
+
+# subset padjust values to p<0.05 and remove NAs
+dcm.ttest.padjustsub1 <-dcm.mean.sd.pval[dcm.mean.sd.pval$padjust<=.05,]
+#dcm.ttest.padjustsub1 <-dcm.mean.sd.pval[dcm.mean.sd.pval$pvals<=.05,]
+dcm.ttest.padjustsub <- na.omit(dcm.ttest.padjustsub1) 
+
+#Export data frame for supplementary table 2
+write.csv(dcm.ttest.padjustsub, "SupplementaryTable3_3samplecull.csv")
+```
